@@ -325,7 +325,7 @@ parse_midi_json_events (
 		return false;
 	}
 
-	is_drum_mode = midi_root.get<bool> ("is_drum_mode", true);
+	is_drum_mode = midi_root.get<bool> ("is_drum_mode", false);
 
 	const int64_t tpq_in = midi_root.get<int64_t> ("ticks_per_quarter", 480);
 	if (tpq_in <= 0 || tpq_in > 96000) {
@@ -486,20 +486,10 @@ build_midi_json_note_defs (
 		    return a.ordinal < b.ordinal;
 	    });
 
-	if (is_drum_mode) {
-		const double default_length = 0.0;
-
-		for (size_t i = 0; i < events.size (); ++i) {
-			MidiJsonNoteDef n;
-			n.start_quarters  = events[i].quarters;
-			n.length_quarters = default_length;
-			n.note            = events[i].ev.note;
-			n.velocity        = events[i].ev.velocity;
-			n.channel         = events[i].ev.channel;
-			notes.push_back (n);
-		}
-		return true;
-	}
+	/* When is_drum_mode is true, an unmatched note_on (no following note_off) is closed
+	 * with this fallback length so the hit is audible. Pairs are still honored when both
+	 * note_on and note_off are provided. ~1/16 of a quarter ≈ 37 ms at 100 BPM. */
+	const double drum_fallback_length = 0.0625;
 
 	struct PendingOn {
 		double quarters;
@@ -556,10 +546,24 @@ build_midi_json_note_defs (
 		active_by_note[note_key].push_back (on);
 	}
 
-	for (std::map<int, std::vector<PendingOn>>::const_iterator it = active_by_note.begin (); it != active_by_note.end (); ++it) {
-		if (!it->second.empty ()) {
-			const int          channel = it->first / 128;
-			const int          note    = it->first % 128;
+	for (std::map<int, std::vector<PendingOn>>::iterator it = active_by_note.begin (); it != active_by_note.end (); ++it) {
+		if (it->second.empty ()) {
+			continue;
+		}
+		const int channel = it->first / 128;
+		const int note    = it->first % 128;
+
+		if (is_drum_mode) {
+			for (size_t j = 0; j < it->second.size (); ++j) {
+				MidiJsonNoteDef n;
+				n.start_quarters  = it->second[j].quarters;
+				n.length_quarters = drum_fallback_length;
+				n.note            = note;
+				n.velocity        = it->second[j].velocity;
+				n.channel         = channel;
+				notes.push_back (n);
+			}
+		} else {
 			std::ostringstream w;
 			w << "Unclosed note_on skipped for note " << note << " on channel " << (channel + 1)
 			  << " (" << it->second.size () << " pending)";
@@ -1576,7 +1580,7 @@ handle_midi_note_import_json_tool (ARDOUR::Session& session, pt::ptree& root, co
 	std::vector<std::string>      warnings;
 	int                           channel                 = 9;
 	bool                          one_based_channel_input = true;
-	bool                          is_drum_mode            = true;
+	bool                          is_drum_mode            = false;
 	int                           ticks_per_quarter       = 480;
 	int                           time_sig_num            = 4;
 	int                           time_sig_den            = 4;

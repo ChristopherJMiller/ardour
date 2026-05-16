@@ -197,7 +197,7 @@ R"mcp(
 },{
   "name": "midi_note_import_json",
   "title": "Import MIDI JSON",
-  "description": "Import MIDI JSON into an existing MIDI region (regionId), or create/populate a new MIDI region on a track (trackId plus range endpoints). midi.midi_events is required. Event positions (bar/b) are relative to region start: bar 1 beat 1 = region start (not absolute session time). b may be fractional (e.g. 1.5 = off-beat 8th note in 4/4), and t is tick offset within the beat using ticks_per_quarter. Channel numbering is 1..16 by default (channel_base=\"one\"). For legacy 0..15 payloads set channel_base=\"zero\". In drum mode (is_drum_mode=true), note_off events are optional; hits may be provided as note_on only.",
+  "description": "Import MIDI JSON into an existing MIDI region (regionId), or create/populate a new MIDI region on a track (trackId plus range endpoints). midi.midi_events is required. Event positions (bar/b) are relative to region start: bar 1 beat 1 = region start (not absolute session time). b may be fractional (e.g. 1.5 = off-beat 8th note in 4/4), and t is tick offset within the beat using ticks_per_quarter. Channel numbering is 1..16 by default (channel_base=\"one\"). For legacy 0..15 payloads set channel_base=\"zero\". By default each note must be a note_on/note_off pair; unmatched note_ons are skipped with a warning. Set is_drum_mode=true to allow note_on-only hits — unmatched note_ons are then closed with a short audible default length (≈1/16 quarter).",
   "inputSchema": {
     "type": "object",
     "properties": {
