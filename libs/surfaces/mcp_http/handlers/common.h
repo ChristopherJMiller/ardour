@@ -87,6 +87,38 @@ double      transport_tempo_bpm (ARDOUR::Session&);
 std::string route_type_string (const std::shared_ptr<ARDOUR::Route>&);
 std::string bbt_json_at_sample (samplepos_t);
 std::string marker_type_json (ARDOUR::Location::Flags);
+std::string special_range_json (const ARDOUR::Location&, const std::string& mode);
+
+/* --- BBT / timeline parsing helpers --------------------------------------- */
+
+bool parse_bbt_target_sample (
+    int bar, double beat,
+    samplepos_t& target_sample,
+    std::string& error);
+
+bool parse_optional_bbt_target_sample (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    samplepos_t&       target_sample,
+    bool&              have_target,
+    std::string&       error);
+
+bool parse_optional_timeline_boundary_sample (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    const std::string& sample_key,
+    const std::string& bar_key,
+    const std::string& beat_key,
+    samplepos_t&       target_sample,
+    bool&              have_target,
+    std::string&       error);
+
+bool parse_range_endpoints (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    samplepos_t&       start_sample,
+    samplepos_t&       end_sample,
+    std::string&       error);
 
 /* --- Fader / dB helpers (shared by tracks + sends) ------------------------ */
 

@@ -394,6 +394,215 @@ marker_type_json (ARDOUR::Location::Flags flags)
 	return ss.str ();
 }
 
+std::string
+special_range_json (const ARDOUR::Location& location, const std::string& mode)
+{
+	const samplepos_t             start_sample = location.start_sample ();
+	const samplepos_t             end_sample   = std::max (start_sample, location.end_sample ());
+	const ARDOUR::Location::Flags flags        = location.flags ();
+	const std::string             start_bbt    = bbt_json_at_sample (start_sample);
+	const std::string             end_bbt      = bbt_json_at_sample (end_sample);
+	const bool                    is_hidden    = location.is_hidden ();
+
+	std::ostringstream ss;
+	ss << "{\"mode\":\"" << json_escape (mode) << "\""
+	   << ",\"locationId\":\"" << json_escape (location.id ().to_s ()) << "\""
+	   << ",\"name\":\"" << json_escape (location.name ()) << "\""
+	   << ",\"startSample\":" << start_sample
+	   << ",\"endSample\":" << end_sample
+	   << ",\"startBbt\":" << start_bbt
+	   << ",\"endBbt\":" << end_bbt
+	   << ",\"lengthSamples\":" << (end_sample - start_sample)
+	   << ",\"isHidden\":" << (is_hidden ? "true" : "false")
+	   << ",\"types\":" << marker_type_json (flags)
+	   << "}";
+	return ss.str ();
+}
+
+bool
+parse_bbt_target_sample (int bar, double beat, samplepos_t& target_sample, std::string& error)
+{
+	error.clear ();
+
+	if (bar < 1 || !std::isfinite (beat) || beat < 1.0) {
+		error = "Invalid bar/beat (expected: bar>=1, beat>=1.0)";
+		return false;
+	}
+
+	int32_t whole_beats = (int32_t)std::floor (beat);
+	double  fractional  = beat - (double)whole_beats;
+
+	if (whole_beats < 1 || fractional < 0.0) {
+		error = "Invalid beat value";
+		return false;
+	}
+
+	int32_t ticks = (int32_t)std::llround (fractional * (double)Temporal::ticks_per_beat);
+	if (ticks >= Temporal::ticks_per_beat) {
+		ticks = 0;
+		++whole_beats;
+	}
+
+	Temporal::BBT_Argument bbt ((int32_t)bar, whole_beats, ticks);
+	target_sample = Temporal::TempoMap::use ()->sample_at (bbt);
+	return true;
+}
+
+bool
+parse_optional_bbt_target_sample (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    samplepos_t&       target_sample,
+    bool&              have_target,
+    std::string&       error)
+{
+	have_target = false;
+	error.clear ();
+
+	const std::optional<int>    bar_opt  = get_optional<int> (root, args_path + ".bar");
+	const std::optional<double> beat_opt = get_optional<double> (root, args_path + ".beat");
+
+	if ((bar_opt && !beat_opt) || (!bar_opt && beat_opt)) {
+		error = "Provide both bar and beat, or neither";
+		return false;
+	}
+
+	if (!bar_opt && !beat_opt) {
+		return true;
+	}
+
+	const int    bar  = *bar_opt;
+	const double beat = *beat_opt;
+	if (!parse_bbt_target_sample (bar, beat, target_sample, error)) {
+		return false;
+	}
+
+	have_target = true;
+	return true;
+}
+
+bool
+parse_optional_timeline_boundary_sample (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    const std::string& sample_key,
+    const std::string& bar_key,
+    const std::string& beat_key,
+    samplepos_t&       target_sample,
+    bool&              have_target,
+    std::string&       error)
+{
+	have_target = false;
+	error.clear ();
+
+	const std::optional<int64_t> sample_opt = get_optional<int64_t> (root, args_path + "." + sample_key);
+	const std::optional<int>     bar_opt    = get_optional<int> (root, args_path + "." + bar_key);
+	const std::optional<double>  beat_opt   = get_optional<double> (root, args_path + "." + beat_key);
+
+	if ((bar_opt && !beat_opt) || (!bar_opt && beat_opt)) {
+		error = std::string ("Provide both ") + bar_key + " and " + beat_key + ", or neither";
+		return false;
+	}
+
+	if (sample_opt && (bar_opt || beat_opt)) {
+		error = std::string ("Provide either ") + sample_key + " or " + bar_key + "+" + beat_key + ", not both";
+		return false;
+	}
+
+	if (!sample_opt && !bar_opt && !beat_opt) {
+		return true;
+	}
+
+	if (sample_opt) {
+		if (*sample_opt < 0) {
+			error = std::string ("Invalid ") + sample_key + " (expected >= 0)";
+			return false;
+		}
+		target_sample = (samplepos_t)*sample_opt;
+		have_target   = true;
+		return true;
+	}
+
+	if (!parse_bbt_target_sample (*bar_opt, *beat_opt, target_sample, error)) {
+		error = std::string ("Invalid ") + bar_key + "/" + beat_key + ": " + error;
+		return false;
+	}
+
+	have_target = true;
+	return true;
+}
+
+bool
+parse_range_endpoints (
+    const pt::ptree&   root,
+    const std::string& args_path,
+    samplepos_t&       start_sample,
+    samplepos_t&       end_sample,
+    std::string&       error)
+{
+	error.clear ();
+	start_sample = 0;
+	end_sample   = 0;
+
+	const std::optional<int64_t> start_sample_opt = get_optional<int64_t> (root, args_path + ".startSample");
+	const std::optional<int64_t> end_sample_opt   = get_optional<int64_t> (root, args_path + ".endSample");
+	const std::optional<int>     start_bar_opt    = get_optional<int> (root, args_path + ".startBar");
+	const std::optional<double>  start_beat_opt   = get_optional<double> (root, args_path + ".startBeat");
+	const std::optional<int>     end_bar_opt      = get_optional<int> (root, args_path + ".endBar");
+	const std::optional<double>  end_beat_opt     = get_optional<double> (root, args_path + ".endBeat");
+
+	if ((start_bar_opt && !start_beat_opt) || (!start_bar_opt && start_beat_opt)) {
+		error = "Provide both startBar and startBeat, or neither";
+		return false;
+	}
+	if ((end_bar_opt && !end_beat_opt) || (!end_bar_opt && end_beat_opt)) {
+		error = "Provide both endBar and endBeat, or neither";
+		return false;
+	}
+	if ((start_sample_opt && !end_sample_opt) || (!start_sample_opt && end_sample_opt)) {
+		error = "Provide both startSample and endSample, or neither";
+		return false;
+	}
+
+	const bool have_samples = start_sample_opt && end_sample_opt;
+	const bool have_bbt     = start_bar_opt && start_beat_opt && end_bar_opt && end_beat_opt;
+
+	if (have_samples && (start_bar_opt || start_beat_opt || end_bar_opt || end_beat_opt)) {
+		error = "Provide either sample pair or bar+beat pair, not both";
+		return false;
+	}
+	if (!have_samples && !have_bbt) {
+		error = "Missing range endpoints (provide sample pair or bar+beat pair)";
+		return false;
+	}
+
+	if (have_samples) {
+		if (*start_sample_opt < 0 || *end_sample_opt < 0) {
+			error = "Invalid sample (expected >= 0)";
+			return false;
+		}
+		start_sample = (samplepos_t)*start_sample_opt;
+		end_sample   = (samplepos_t)*end_sample_opt;
+	} else {
+		std::string bbt_error;
+		if (!parse_bbt_target_sample (*start_bar_opt, *start_beat_opt, start_sample, bbt_error)) {
+			error = std::string ("Invalid start ") + bbt_error;
+			return false;
+		}
+		if (!parse_bbt_target_sample (*end_bar_opt, *end_beat_opt, end_sample, bbt_error)) {
+			error = std::string ("Invalid end ") + bbt_error;
+			return false;
+		}
+	}
+
+	if (end_sample < start_sample) {
+		error = "Invalid range: end before start";
+		return false;
+	}
+
+	return true;
+}
+
 bool
 valid_fader_position (double p)
 {

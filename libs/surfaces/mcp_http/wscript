@@ -16,6 +16,7 @@ def build(bld):
             mcp_http_server.cc
             handlers/common.cc
             handlers/session.cc
+            handlers/transport.cc
     '''
     obj.defines      = [ 'PACKAGE="ardour_mcp_http"' ]
     obj.defines     += [ 'ARDOURSURFACE_DLL_EXPORTS' ]
