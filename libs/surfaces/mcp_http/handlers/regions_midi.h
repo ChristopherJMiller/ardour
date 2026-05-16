@@ -33,7 +33,7 @@ namespace ArdourSurface
 namespace mcp
 {
 
-/* Handles both region/* and midi_region/* + midi_note/* tools. */
+/* Handles region, midi_region, and midi_note tool families. */
 bool dispatch_regions_midi_tool_call (
     ARDOUR::Session&             session,
     const std::string&           tool_name,

@@ -90,575 +90,11 @@ namespace pt = boost::property_tree;
 
 using namespace ArdourSurface;
 
-namespace
-{
-
-template <typename T>
-static std::optional<T>
-get_optional_std (const pt::ptree& tree, const std::string& path)
-{
-	const boost::optional<T> value = tree.get_optional<T> (path);
-	if (value) {
-		return *value;
-	}
-	return std::nullopt;
-}
-
-
-static std::string
-json_escape (const std::string& s)
-{
-	std::ostringstream o;
-
-	for (std::string::const_iterator it = s.begin (); it != s.end (); ++it) {
-		if (*it == '"' || *it == '\\' || ('\x00' <= *it && *it <= '\x1f')) {
-			o << "\\u" << std::hex << std::setw (4) << std::setfill ('0') << static_cast<int> (*it);
-		} else {
-			o << *it;
-		}
-	}
-
-	return o.str ();
-}
-
-static std::string
-canonical_tool_name (std::string tool_name)
-{
-	/* Some MCP clients only support function-safe identifiers, so accept
-	 * underscore and dotted aliases in addition to slash-delimited names.
-	 */
-	std::replace (tool_name.begin (), tool_name.end (), '.', '/');
-
-	if (tool_name.find ('/') != std::string::npos) {
-		return tool_name;
-	}
-
-	static const char* known_groups[] = {
-		"session",
-		"transport",
-		"markers",
-		"tracks",
-		"buses",
-		"track",
-		"region",
-		"plugin",
-		"midi_region",
-		"midi_note"
-	};
-
-	for (size_t i = 0; i < (sizeof (known_groups) / sizeof (known_groups[0])); ++i) {
-		const std::string group (known_groups[i]);
-		const std::string prefix = group + "_";
-		if (tool_name.size () <= prefix.size ()) {
-			continue;
-		}
-		if (tool_name.compare (0, prefix.size (), prefix) == 0) {
-			tool_name[group.size ()] = '/';
-			return tool_name;
-		}
-	}
-
-	return tool_name;
-}
-
-static bool
-is_decimal_pbd_id_string (const std::string& s)
-{
-	if (s.empty ()) {
-		return false;
-	}
-
-	for (std::string::const_iterator i = s.begin (); i != s.end (); ++i) {
-		if (!std::isdigit ((unsigned char)*i)) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static ARDOUR::Location*
-location_by_mcp_id (ARDOUR::Locations& locations, const std::string& id)
-{
-	/* Defensive guard:
-	 * PBD::ID(string) does not fail-closed on parse errors, so reject
-	 * non-decimal MCP IDs before constructing an ID object.
-	 */
-	if (!is_decimal_pbd_id_string (id)) {
-		return 0;
-	}
-
-	return locations.get_location_by_id (PBD::ID (id));
-}
-
-static std::shared_ptr<ARDOUR::Region>
-region_by_mcp_id (const std::string& id)
-{
-	if (!is_decimal_pbd_id_string (id)) {
-		return std::shared_ptr<ARDOUR::Region> ();
-	}
-
-	return ARDOUR::RegionFactory::region_by_id (PBD::ID (id));
-}
-
-static std::shared_ptr<ARDOUR::Route>
-route_by_mcp_id (ARDOUR::Session& session, const std::string& id)
-{
-	if (!is_decimal_pbd_id_string (id)) {
-		return std::shared_ptr<ARDOUR::Route> ();
-	}
-
-	return session.route_by_id (PBD::ID (id));
-}
-
-static bool
-is_number_literal (const std::string& s)
-{
-	if (s.empty ()) {
-		return false;
-	}
-
-	char* endptr = 0;
-	std::strtod (s.c_str (), &endptr);
-	return endptr && *endptr == '\0';
-}
-
-static int
-clamp_debug_level (int level)
-{
-	if (level < 0) {
-		return 0;
-	}
-	if (level > 2) {
-		return 2;
-	}
-	return level;
-}
-
-static std::string
-tool_result_with_structured_text_fallback (const std::string& result_json)
-{
-	/* Compatibility policy: whenever structuredContent is present, mirror it
-	 * as serialized JSON in content[0].text for clients that ignore structure.
-	 *
-	 * This helper assumes the tool result shape used in this server:
-	 * {"content":[...],"structuredContent":<json>}
-	 */
-	static const std::string     key     = "\"structuredContent\":";
-	const std::string::size_type key_pos = result_json.find (key);
-	if (key_pos == std::string::npos) {
-		return result_json;
-	}
-
-	std::string::size_type obj_end = result_json.find_last_not_of (" \t\r\n");
-	if (obj_end == std::string::npos || result_json[obj_end] != '}') {
-		return result_json;
-	}
-
-	std::string::size_type value_start = key_pos + key.size ();
-	while (value_start < result_json.size () && std::isspace ((unsigned char)result_json[value_start])) {
-		++value_start;
-	}
-	if (value_start >= obj_end) {
-		return result_json;
-	}
-
-	const std::string structured_json = result_json.substr (value_start, obj_end - value_start);
-	return std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"") + json_escape (structured_json) + "\"}],\"structuredContent\":" + structured_json + "}";
-}
-
-static std::string
-jsonrpc_id (const pt::ptree& root)
-{
-	boost::optional<const pt::ptree&> id_node = root.get_child_optional ("id");
-	if (!id_node) {
-		return "null";
-	}
-
-	if (!id_node->empty ()) {
-		return "null";
-	}
-
-	std::string id = id_node->data ();
-	if (id.empty () || id == "null") {
-		return "null";
-	}
-
-	if (id == "true" || id == "false" || is_number_literal (id)) {
-		return id;
-	}
-
-	return std::string ("\"") + json_escape (id) + "\"";
-}
-
-static bool
-has_jsonrpc_id (const pt::ptree& root)
-{
-	return root.get_child_optional ("id").is_initialized ();
-}
-
-static std::string
-jsonrpc_result (const std::string& id, const std::string& result_json)
-{
-	const std::string normalized_result_json = tool_result_with_structured_text_fallback (result_json);
-	return std::string ("{\"jsonrpc\":\"2.0\",\"id\":") + id + ",\"result\":" + normalized_result_json + "}";
-}
-
-static std::string
-jsonrpc_error (const std::string& id, int code, const std::string& message)
-{
-	std::ostringstream ss;
-	ss << "{\"jsonrpc\":\"2.0\",\"id\":" << id << ",\"error\":{\"code\":" << code << ",\"message\":\""
-	   << json_escape (message) << "\"}}";
-	return ss.str ();
-}
-
-static std::string
-transport_state_string (ARDOUR::Session& session)
-{
-	if (session.transport_locating ()) {
-		return "locating";
-	}
-
-	if (session.transport_rolling ()) {
-		return "rolling";
-	}
-
-	return "stopped";
-}
-
-static std::string
-transport_state_json (ARDOUR::Session& session)
-{
-	std::ostringstream ss;
-	ss << "{\"rolling\":" << (session.transport_rolling () ? "true" : "false")
-	   << ",\"speed\":" << session.transport_speed ()
-	   << ",\"sample\":" << session.transport_sample ()
-	   << ",\"state\":\"" << transport_state_string (session) << "\"}";
-	return ss.str ();
-}
-
-static const char*
-record_state_string (ARDOUR::RecordState state)
-{
-	switch (state) {
-		case ARDOUR::Disabled:
-			return "disabled";
-		case ARDOUR::Enabled:
-			return "enabled";
-		case ARDOUR::Recording:
-			return "recording";
-		default:
-			return "unknown";
-	}
-}
-
-static double
-transport_tempo_bpm (ARDOUR::Session& session)
-{
-	try {
-		Temporal::TempoMap::SharedPtr tmap (Temporal::TempoMap::fetch ());
-		return tmap->metric_at (Temporal::timepos_t (session.transport_sample ())).tempo ().quarter_notes_per_minute ();
-	} catch (...) {
-		return 120.0;
-	}
-}
-
-static std::string
-route_type_string (const std::shared_ptr<ARDOUR::Route>& route)
-{
-	if (!route) {
-		return "route";
-	}
-
-	if (std::dynamic_pointer_cast<ARDOUR::MidiTrack> (route)) {
-		return "midi_track";
-	}
-	if (std::dynamic_pointer_cast<ARDOUR::AudioTrack> (route)) {
-		return "audio_track";
-	}
-	if (route->is_track ()) {
-		return "track";
-	}
-	return "bus";
-}
-
-
-static std::string
-marker_type_json (ARDOUR::Location::Flags flags)
-{
-	static const struct TypeName {
-		const char* enum_name;
-		const char* wire_name;
-	} names[] = {
-		{ "IsMark", "mark" },
-		{ "IsHidden", "hidden" },
-		{ "IsCueMarker", "cue" },
-		{ "IsCDMarker", "cd" },
-		{ "IsXrun", "xrun" },
-		{ "IsSection", "section" },
-		{ "IsScene", "scene" },
-		{ "IsRangeMarker", "range" },
-		{ "IsSessionRange", "session_range" },
-		{ "IsAutoLoop", "auto_loop" },
-		{ "IsAutoPunch", "auto_punch" },
-		{ "IsClockOrigin", "clock_origin" },
-		{ "IsSkip", "skip" }
-	};
-
-	const std::string  flags_text = enum_2_string (flags);
-	std::ostringstream ss;
-	ss << "[";
-
-	bool   first = true;
-	size_t start = 0;
-	while (start < flags_text.size ()) {
-		size_t comma = flags_text.find (',', start);
-		if (comma == std::string::npos) {
-			comma = flags_text.size ();
-		}
-
-		size_t token_begin = flags_text.find_first_not_of (" \t", start);
-		size_t token_end   = comma;
-		while (token_end > start && (flags_text[token_end - 1] == ' ' || flags_text[token_end - 1] == '\t')) {
-			--token_end;
-		}
-		if (token_begin == std::string::npos || token_begin >= token_end) {
-			start = comma + 1;
-			continue;
-		}
-
-		std::string token = flags_text.substr (token_begin, token_end - token_begin);
-		for (size_t i = 0; i < (sizeof (names) / sizeof (names[0])); ++i) {
-			if (token == names[i].enum_name) {
-				token = names[i].wire_name;
-				break;
-			}
-		}
-
-		if (!first) {
-			ss << ",";
-		}
-		first = false;
-		ss << "\"" << json_escape (token) << "\"";
-
-		start = comma + 1;
-	}
-
-	ss << "]";
-	return ss.str ();
-}
-
-static std::string
-bbt_json_at_sample (samplepos_t sample)
-{
-	Temporal::BBT_Time bbt = Temporal::TempoMap::use ()->bbt_at (Temporal::timepos_t (sample));
-
-	std::ostringstream text;
-	text << bbt.bars << "|" << bbt.beats << "|" << bbt.ticks;
-
-	std::ostringstream ss;
-	ss << "{\"bars\":" << bbt.bars
-	   << ",\"beats\":" << bbt.beats
-	   << ",\"ticks\":" << bbt.ticks
-	   << ",\"text\":\"" << text.str () << "\"}";
-	return ss.str ();
-}
-
-
-static bool
-parse_bbt_target_sample (int bar, double beat, samplepos_t& target_sample, std::string& error)
-{
-	error.clear ();
-
-	if (bar < 1 || !std::isfinite (beat) || beat < 1.0) {
-		error = "Invalid bar/beat (expected: bar>=1, beat>=1.0)";
-		return false;
-	}
-
-	int32_t whole_beats = (int32_t)std::floor (beat);
-	double  fractional  = beat - (double)whole_beats;
-
-	if (whole_beats < 1 || fractional < 0.0) {
-		error = "Invalid beat value";
-		return false;
-	}
-
-	int32_t ticks = (int32_t)std::llround (fractional * (double)Temporal::ticks_per_beat);
-	if (ticks >= Temporal::ticks_per_beat) {
-		ticks = 0;
-		++whole_beats;
-	}
-
-	Temporal::BBT_Argument bbt ((int32_t)bar, whole_beats, ticks);
-	target_sample = Temporal::TempoMap::use ()->sample_at (bbt);
-	return true;
-}
-
-
-static bool
-parse_optional_bbt_target_sample (
-    const pt::ptree&   root,
-    const std::string& args_path,
-    samplepos_t&       target_sample,
-    bool&              have_target,
-    std::string&       error)
-{
-	have_target = false;
-	error.clear ();
-
-	const std::optional<int>    bar_opt  = get_optional_std<int> (root, args_path + ".bar");
-	const std::optional<double> beat_opt = get_optional_std<double> (root, args_path + ".beat");
-
-	if ((bar_opt && !beat_opt) || (!bar_opt && beat_opt)) {
-		error = "Provide both bar and beat, or neither";
-		return false;
-	}
-
-	if (!bar_opt && !beat_opt) {
-		return true;
-	}
-
-	const int    bar  = *bar_opt;
-	const double beat = *beat_opt;
-	if (!parse_bbt_target_sample (bar, beat, target_sample, error)) {
-		return false;
-	}
-
-	have_target = true;
-	return true;
-}
-
-static bool
-parse_optional_timeline_boundary_sample (
-    const pt::ptree&   root,
-    const std::string& args_path,
-    const std::string& sample_key,
-    const std::string& bar_key,
-    const std::string& beat_key,
-    samplepos_t&       target_sample,
-    bool&              have_target,
-    std::string&       error)
-{
-	have_target = false;
-	error.clear ();
-
-	const std::optional<int64_t> sample_opt = get_optional_std<int64_t> (root, args_path + "." + sample_key);
-	const std::optional<int>     bar_opt    = get_optional_std<int> (root, args_path + "." + bar_key);
-	const std::optional<double>  beat_opt   = get_optional_std<double> (root, args_path + "." + beat_key);
-
-	if ((bar_opt && !beat_opt) || (!bar_opt && beat_opt)) {
-		error = std::string ("Provide both ") + bar_key + " and " + beat_key + ", or neither";
-		return false;
-	}
-
-	if (sample_opt && (bar_opt || beat_opt)) {
-		error = std::string ("Provide either ") + sample_key + " or " + bar_key + "+" + beat_key + ", not both";
-		return false;
-	}
-
-	if (!sample_opt && !bar_opt && !beat_opt) {
-		return true;
-	}
-
-	if (sample_opt) {
-		if (*sample_opt < 0) {
-			error = std::string ("Invalid ") + sample_key + " (expected >= 0)";
-			return false;
-		}
-		target_sample = (samplepos_t)*sample_opt;
-		have_target   = true;
-		return true;
-	}
-
-	if (!parse_bbt_target_sample (*bar_opt, *beat_opt, target_sample, error)) {
-		error = std::string ("Invalid ") + bar_key + "/" + beat_key + ": " + error;
-		return false;
-	}
-
-	have_target = true;
-	return true;
-}
-
-
-static bool
-parse_range_endpoints (
-    const pt::ptree&   root,
-    const std::string& args_path,
-    samplepos_t&       start_sample,
-    samplepos_t&       end_sample,
-    std::string&       error)
-{
-	error.clear ();
-	start_sample = 0;
-	end_sample   = 0;
-
-	const std::optional<int64_t> start_sample_opt = get_optional_std<int64_t> (root, args_path + ".startSample");
-	const std::optional<int64_t> end_sample_opt   = get_optional_std<int64_t> (root, args_path + ".endSample");
-	const std::optional<int>     start_bar_opt    = get_optional_std<int> (root, args_path + ".startBar");
-	const std::optional<double>  start_beat_opt   = get_optional_std<double> (root, args_path + ".startBeat");
-	const std::optional<int>     end_bar_opt      = get_optional_std<int> (root, args_path + ".endBar");
-	const std::optional<double>  end_beat_opt     = get_optional_std<double> (root, args_path + ".endBeat");
-
-	if ((start_bar_opt && !start_beat_opt) || (!start_bar_opt && start_beat_opt)) {
-		error = "Provide both startBar and startBeat, or neither";
-		return false;
-	}
-	if ((end_bar_opt && !end_beat_opt) || (!end_bar_opt && end_beat_opt)) {
-		error = "Provide both endBar and endBeat, or neither";
-		return false;
-	}
-	if ((start_sample_opt && !end_sample_opt) || (!start_sample_opt && end_sample_opt)) {
-		error = "Provide both startSample and endSample, or neither";
-		return false;
-	}
-
-	const bool have_samples = start_sample_opt && end_sample_opt;
-	const bool have_bbt     = start_bar_opt && start_beat_opt && end_bar_opt && end_beat_opt;
-
-	if (have_samples && (start_bar_opt || start_beat_opt || end_bar_opt || end_beat_opt)) {
-		error = "Provide either sample pair or bar+beat pair, not both";
-		return false;
-	}
-	if (!have_samples && !have_bbt) {
-		error = "Missing range endpoints (provide sample pair or bar+beat pair)";
-		return false;
-	}
-
-	if (have_samples) {
-		if (*start_sample_opt < 0 || *end_sample_opt < 0) {
-			error = "Invalid sample (expected >= 0)";
-			return false;
-		}
-		start_sample = (samplepos_t)*start_sample_opt;
-		end_sample   = (samplepos_t)*end_sample_opt;
-	} else {
-		std::string bbt_error;
-		if (!parse_bbt_target_sample (*start_bar_opt, *start_beat_opt, start_sample, bbt_error)) {
-			error = std::string ("Invalid start ") + bbt_error;
-			return false;
-		}
-		if (!parse_bbt_target_sample (*end_bar_opt, *end_beat_opt, end_sample, bbt_error)) {
-			error = std::string ("Invalid end ") + bbt_error;
-			return false;
-		}
-	}
-
-	if (end_sample < start_sample) {
-		error = "Invalid range: end before start";
-		return false;
-	}
-
-	return true;
-}
-
-
-} // namespace
 
 MCPHttpServer::MCPHttpServer (ARDOUR::Session& session, uint16_t port, int debug_level, PBD::EventLoop* event_loop)
 	: _session (session)
 	, _port (port)
-	, _debug_level (clamp_debug_level (debug_level))
+	, _debug_level (std::clamp (debug_level, 0, 2))
 	, _event_loop (event_loop)
 	, _context (0)
 	, _running (false)
@@ -731,7 +167,7 @@ MCPHttpServer::stop ()
 void
 MCPHttpServer::set_debug_level (int level)
 {
-	_debug_level.store (clamp_debug_level (level));
+	_debug_level.store (std::clamp (level, 0, 2));
 }
 
 int
@@ -931,19 +367,19 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		if (dbg >= 1) {
 			PBD::warning << "MCPHttp: JSON parse error" << endmsg;
 		}
-		return jsonrpc_error ("null", -32700, "Parse error");
+		return mcp::jsonrpc_error ("null", -32700, "Parse error");
 	}
 
 	std::string method = root.get<std::string> ("method", "");
-	std::string id     = jsonrpc_id (root);
-	const bool  has_id = has_jsonrpc_id (root);
+	std::string id     = mcp::jsonrpc_id (root);
+	const bool  has_id = mcp::has_jsonrpc_id (root);
 
 	if (dbg >= 2) {
 		PBD::info << "MCPHttp: request payload: " << payload << endmsg;
 	}
 	if (dbg >= 1) {
 		if (method == "tools/call") {
-			const std::string requested_tool = canonical_tool_name (root.get<std::string> ("params.name", ""));
+			const std::string requested_tool = mcp::canonical_tool_name (root.get<std::string> ("params.name", ""));
 			PBD::info << "MCPHttp: tools/call " << requested_tool << endmsg;
 		} else {
 			PBD::info << "MCPHttp: " << method << endmsg;
@@ -951,11 +387,11 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 	}
 
 	if (method.empty ()) {
-		return jsonrpc_error (id, -32600, "Invalid Request");
+		return mcp::jsonrpc_error (id, -32600, "Invalid Request");
 	}
 
 	if (method == "initialize") {
-		return jsonrpc_result (
+		return mcp::jsonrpc_result (
 		    id,
 		    "{\"protocolVersion\":\"2025-03-26\","
 		    "\"capabilities\":{\"tools\":{\"listChanged\":false}},"
@@ -968,7 +404,7 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 	}
 
 	if (method == "ping" || method == "notifications/initialized") {
-		return jsonrpc_result (id, "{}");
+		return mcp::jsonrpc_result (id, "{}");
 	}
 
 	if (method == "tools/list") {
@@ -976,13 +412,13 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 #include "tools_json.inc"
 		};
 
-		return jsonrpc_result (
+		return mcp::jsonrpc_result (
 		    id,
 		    std::string (tools_list));
 	}
 
 	if (method == "tools/call") {
-		std::string tool_name = canonical_tool_name (root.get<std::string> ("params.name", ""));
+		std::string tool_name = mcp::canonical_tool_name (root.get<std::string> ("params.name", ""));
 		if (tool_name == "hello_world") {
 			std::string caller = root.get<std::string> ("params.arguments.name", "");
 			std::string text   = "Hello from Ardour";
@@ -991,9 +427,9 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 			}
 			text += " (session: " + _session.name () + ")";
 
-			return jsonrpc_result (
+			return mcp::jsonrpc_result (
 			    id,
-			    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"") + json_escape (text) + "\"}]}");
+			    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"") + mcp::json_escape (text) + "\"}]}");
 		}
 
 		std::string track_tool_response;
@@ -1031,10 +467,10 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 			return midi_region_tool_response;
 		}
 
-		return jsonrpc_error (id, -32602, "Unknown tool name");
+		return mcp::jsonrpc_error (id, -32602, "Unknown tool name");
 	}
 
-	return jsonrpc_error (id, -32601, "Method not found");
+	return mcp::jsonrpc_error (id, -32601, "Method not found");
 }
 
 int

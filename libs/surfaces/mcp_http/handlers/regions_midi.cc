@@ -732,50 +732,6 @@ midi_note_json (
 	return ss.str ();
 }
 
-static bool
-valid_fader_position (double p)
-{
-	return std::isfinite (p) && p >= 0.0 && p <= 1.0;
-}
-
-static bool
-valid_fader_db (double d)
-{
-	if (std::isnan (d)) {
-		return false;
-	}
-
-	if (std::isinf (d)) {
-		return d < 0.0;
-	}
-
-	/* Match OSC silence floor and enforce explicit MCP dB bounds. */
-	return d >= -193.0 && d <= 6.0;
-}
-
-static bool
-db_is_silence_floor (double db)
-{
-	return !std::isfinite (db) || db <= -192.0;
-}
-
-static double
-db_to_gain_with_floor (double db)
-{
-	return db_is_silence_floor (db) ? 0.0 : dB_to_coefficient (db);
-}
-
-static double
-normalized_db_value (double db)
-{
-	if (db_is_silence_floor (db)) {
-		return -193.0;
-	}
-
-	/* Avoid scientific-notation near-zero noise in JSON output. */
-	return (std::fabs (db) < 1e-6) ? 0.0 : db;
-}
-
 
 
 
