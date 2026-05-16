@@ -81,6 +81,7 @@
 #include "handlers/plugins.h"
 #include "handlers/prompts.h"
 #include "handlers/regions_midi.h"
+#include "handlers/resources.h"
 #include "handlers/session.h"
 #include "handlers/tempo.h"
 #include "handlers/track.h"
@@ -396,7 +397,7 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		return mcp::jsonrpc_result (
 		    id,
 		    "{\"protocolVersion\":\"2025-03-26\","
-		    "\"capabilities\":{\"tools\":{\"listChanged\":false},\"prompts\":{\"listChanged\":false}},"
+		    "\"capabilities\":{\"tools\":{\"listChanged\":false},\"prompts\":{\"listChanged\":false},\"resources\":{\"listChanged\":false,\"subscribe\":false}},"
 		    "\"serverInfo\":{\"name\":\"ardour-mcp-http\",\"version\":\"0.1.0\"}}");
 	}
 
@@ -406,6 +407,14 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 
 	if (method == "prompts/get") {
 		return mcp::handle_prompts_get (root, id);
+	}
+
+	if (method == "resources/list") {
+		return mcp::handle_resources_list (_session, id);
+	}
+
+	if (method == "resources/read") {
+		return mcp::handle_resources_read (_session, root, id);
 	}
 
 	if (method == "notifications/initialized" && !has_id) {
