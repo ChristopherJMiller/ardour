@@ -19,6 +19,7 @@ def build(bld):
             handlers/plugins.cc
             handlers/regions_midi.cc
             handlers/session.cc
+            handlers/tempo.cc
             handlers/track.cc
             handlers/tracks.cc
             handlers/transport.cc

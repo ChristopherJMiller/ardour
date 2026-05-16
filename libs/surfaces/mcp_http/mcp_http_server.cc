@@ -81,6 +81,7 @@
 #include "handlers/plugins.h"
 #include "handlers/regions_midi.h"
 #include "handlers/session.h"
+#include "handlers/tempo.h"
 #include "handlers/track.h"
 #include "handlers/tracks.h"
 #include "handlers/transport.h"
@@ -465,6 +466,11 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		std::string midi_region_tool_response;
 		if (mcp::dispatch_regions_midi_tool_call (_session, tool_name, root, id, midi_region_tool_response)) {
 			return midi_region_tool_response;
+		}
+
+		std::string tempo_tool_response;
+		if (mcp::dispatch_tempo_tool_call (_session, tool_name, root, id, tempo_tool_response)) {
+			return tempo_tool_response;
 		}
 
 		return mcp::jsonrpc_error (id, -32602, "Unknown tool name");
