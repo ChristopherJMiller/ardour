@@ -16,11 +16,13 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include "ardour/location.h"
 #include "ardour/rc_configuration.h"
@@ -292,10 +294,28 @@ handle_transport_set_speed_tool (ARDOUR::Session& session, const pt::ptree& root
 	    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"Transport speed updated\"}],\"structuredContent\":") + structured.str () + "}");
 }
 
+/* request_roll/request_stop are async — the realtime thread applies the change.
+ * Briefly wait for the state to settle so the response reflects post-call state
+ * instead of the stale pre-call snapshot. Caps at ~100 ms; on timeout we return
+ * what we have. */
+static void
+wait_for_transport_state (ARDOUR::Session& session, bool target_rolling)
+{
+	using namespace std::chrono;
+	const auto deadline = steady_clock::now () + milliseconds (100);
+	while (steady_clock::now () < deadline) {
+		if (session.transport_rolling () == target_rolling) {
+			return;
+		}
+		std::this_thread::sleep_for (milliseconds (2));
+	}
+}
+
 std::string
 handle_transport_play_tool (ARDOUR::Session& session, const std::string& id)
 {
 	session.request_roll ();
+	wait_for_transport_state (session, true);
 	std::string structured = transport_state_json (session);
 	return jsonrpc_result (
 	    id,
@@ -306,6 +326,7 @@ std::string
 handle_transport_stop_tool (ARDOUR::Session& session, const std::string& id)
 {
 	session.request_stop ();
+	wait_for_transport_state (session, false);
 	std::string structured = transport_state_json (session);
 	return jsonrpc_result (
 	    id,
