@@ -16,6 +16,7 @@ def build(bld):
             mcp_http_server.cc
             handlers/common.cc
             handlers/markers.cc
+            handlers/plugins.cc
             handlers/session.cc
             handlers/track.cc
             handlers/tracks.cc
