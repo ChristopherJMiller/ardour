@@ -76,6 +76,7 @@
 #include "ardour/tempo.h"
 #include "ardour/track.h"
 
+#include "handlers/automation.h"
 #include "handlers/common.h"
 #include "handlers/markers.h"
 #include "handlers/plugins.h"
@@ -489,6 +490,11 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		std::string tempo_tool_response;
 		if (mcp::dispatch_tempo_tool_call (_session, tool_name, root, id, tempo_tool_response)) {
 			return tempo_tool_response;
+		}
+
+		std::string automation_tool_response;
+		if (mcp::dispatch_automation_tool_call (_session, tool_name, root, id, automation_tool_response)) {
+			return automation_tool_response;
 		}
 
 		return mcp::jsonrpc_error (id, -32602, "Unknown tool name");
