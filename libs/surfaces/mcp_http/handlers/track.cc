@@ -435,7 +435,7 @@ handle_track_get_info_tool (ARDOUR::Session& session, const pt::ptree& root, con
 		return jsonrpc_error (id, -32602, "Missing track id");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -456,7 +456,7 @@ handle_track_get_regions_tool (ARDOUR::Session& session, const pt::ptree& root, 
 		return jsonrpc_error (id, -32602, "Missing track id");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -495,7 +495,7 @@ handle_track_get_fader_tool (ARDOUR::Session& session, const pt::ptree& root, co
 		return jsonrpc_error (id, -32602, "Missing track id");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -520,7 +520,7 @@ handle_track_select_tool (ARDOUR::Session& session, const pt::ptree& root, const
 		return jsonrpc_error (id, -32602, "Missing route id");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -547,7 +547,7 @@ handle_track_rename_tool (ARDOUR::Session& session, const pt::ptree& root, const
 		return jsonrpc_error (id, -32602, "Missing newName");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -582,7 +582,7 @@ handle_track_set_mute_tool (ARDOUR::Session& session, const pt::ptree& root, con
 		return jsonrpc_error (id, -32602, "Missing boolean value");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -619,7 +619,7 @@ handle_track_set_solo_tool (ARDOUR::Session& session, const pt::ptree& root, con
 		return jsonrpc_error (id, -32602, "Missing boolean value");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -659,7 +659,7 @@ handle_track_set_rec_enable_tool (ARDOUR::Session& session, const pt::ptree& roo
 		return jsonrpc_error (id, -32602, "Missing boolean value");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	const std::shared_ptr<ARDOUR::Track> track = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 	if (!track) {
 		return jsonrpc_error (id, -32602, "Track not found");
@@ -697,7 +697,7 @@ handle_track_set_rec_safe_tool (ARDOUR::Session& session, const pt::ptree& root,
 		return jsonrpc_error (id, -32602, "Missing boolean value");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	const std::shared_ptr<ARDOUR::Track> track = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 	if (!track) {
 		return jsonrpc_error (id, -32602, "Track not found");
@@ -735,7 +735,7 @@ handle_track_set_pan_tool (ARDOUR::Session& session, const pt::ptree& root, cons
 		return jsonrpc_error (id, -32602, "Invalid pan position (expected 0.0 to 1.0)");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -774,7 +774,7 @@ handle_track_set_send_level_tool (ARDOUR::Session& session, const pt::ptree& roo
 		return jsonrpc_error (id, -32602, "Provide only one of: position or db");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -846,8 +846,8 @@ handle_track_add_send_tool (ARDOUR::Session& session, const pt::ptree& root, con
 		return jsonrpc_error (id, -32602, "Invalid dB value (expected -193.0 to +6.0 dB; use -193.0 for silence)");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route        = route_by_mcp_id (session, route_id);
-	const std::shared_ptr<ARDOUR::Route> target_route = route_by_mcp_id (session, target_id);
+	const std::shared_ptr<ARDOUR::Route> route        = route_by_mcp_id_or_selection (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> target_route = route_by_mcp_id_or_selection (session, target_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Source route not found");
 	}
@@ -946,7 +946,7 @@ handle_track_set_send_position_tool (ARDOUR::Session& session, const pt::ptree& 
 		return jsonrpc_error (id, -32602, "Missing postFader boolean");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -977,7 +977,7 @@ handle_track_remove_send_tool (ARDOUR::Session& session, const pt::ptree& root, 
 		return jsonrpc_error (id, -32602, "Invalid sendIndex (expected >= 0)");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}
@@ -1052,7 +1052,7 @@ handle_track_set_fader_tool (ARDOUR::Session& session, const pt::ptree& root, co
 		return jsonrpc_error (id, -32602, "Provide only one of: position or db");
 	}
 
-	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (session, route_id);
+	const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (session, route_id);
 	if (!route) {
 		return jsonrpc_error (id, -32602, "Route not found");
 	}

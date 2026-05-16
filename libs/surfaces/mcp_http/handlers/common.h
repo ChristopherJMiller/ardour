@@ -75,6 +75,13 @@ ARDOUR::Location*               location_by_mcp_id (ARDOUR::Locations&, const st
 std::shared_ptr<ARDOUR::Region> region_by_mcp_id (const std::string& id);
 std::shared_ptr<ARDOUR::Route>  route_by_mcp_id (ARDOUR::Session&, const std::string& id);
 
+/* Selection-aware route resolver. Accepts the "selected" sentinel or an
+ * empty string as "use the currently selected route" (via CoreSelection).
+ * Otherwise behaves like route_by_mcp_id. Returns null if neither a valid
+ * id was given nor a route is currently selected.
+ */
+std::shared_ptr<ARDOUR::Route> route_by_mcp_id_or_selection (ARDOUR::Session&, const std::string& id);
+
 /* --- Transport / session common JSON -------------------------------------- */
 
 std::string transport_state_string (ARDOUR::Session&);

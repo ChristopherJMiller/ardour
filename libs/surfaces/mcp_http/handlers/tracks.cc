@@ -205,7 +205,7 @@ handle_tracks_add_or_buses_add_tool (ARDOUR::Session& session, const std::string
 
 	if (insert_mode != "end") {
 		if (!relative_to_id.empty ()) {
-			relative_route = route_by_mcp_id (session, relative_to_id);
+			relative_route = route_by_mcp_id_or_selection (session, relative_to_id);
 			if (!relative_route) {
 				return jsonrpc_error (id, -32602, "relativeToId route not found");
 			}

@@ -154,6 +154,16 @@ route_by_mcp_id (ARDOUR::Session& session, const std::string& id)
 	return session.route_by_id (PBD::ID (id));
 }
 
+std::shared_ptr<ARDOUR::Route>
+route_by_mcp_id_or_selection (ARDOUR::Session& session, const std::string& id)
+{
+	if (id == "selected") {
+		return std::dynamic_pointer_cast<ARDOUR::Route> (session.selection ().first_selected_stripable ());
+	}
+
+	return route_by_mcp_id (session, id);
+}
+
 namespace
 {
 bool

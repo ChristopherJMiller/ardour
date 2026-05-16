@@ -854,7 +854,7 @@ handle_midi_region_add_tool (ARDOUR::Session& session, pt::ptree& root, const st
 		return jsonrpc_error (id, -32602, "Missing trackId");
 	}
 
-	const std::shared_ptr<ARDOUR::Route>     route      = route_by_mcp_id (_session, track_id);
+	const std::shared_ptr<ARDOUR::Route>     route      = route_by_mcp_id_or_selection (_session, track_id);
 	const std::shared_ptr<ARDOUR::Track>     track      = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 	const std::shared_ptr<ARDOUR::MidiTrack> midi_track = std::dynamic_pointer_cast<ARDOUR::MidiTrack> (track);
 	if (!midi_track) {
@@ -1529,7 +1529,7 @@ handle_midi_note_import_json_tool (ARDOUR::Session& session, pt::ptree& root, co
 		}
 
 		if (!track_id_arg.empty ()) {
-			std::shared_ptr<ARDOUR::Route> r = route_by_mcp_id (_session, track_id_arg);
+			std::shared_ptr<ARDOUR::Route> r = route_by_mcp_id_or_selection (_session, track_id_arg);
 			target_track                     = std::dynamic_pointer_cast<ARDOUR::Track> (r);
 		}
 	} else {
@@ -1537,7 +1537,7 @@ handle_midi_note_import_json_tool (ARDOUR::Session& session, pt::ptree& root, co
 			return jsonrpc_error (id, -32602, "Provide regionId, or trackId with range endpoints");
 		}
 
-		std::shared_ptr<ARDOUR::Route> route                = route_by_mcp_id (_session, track_id_arg);
+		std::shared_ptr<ARDOUR::Route> route                = route_by_mcp_id_or_selection (_session, track_id_arg);
 		target_track                                        = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 		const std::shared_ptr<ARDOUR::MidiTrack> midi_track = std::dynamic_pointer_cast<ARDOUR::MidiTrack> (target_track);
 		if (!midi_track) {
@@ -2483,7 +2483,7 @@ handle_region_copy_tool (ARDOUR::Session& session, pt::ptree& root, const std::s
 	std::shared_ptr<ARDOUR::Track>    target_track;
 	std::shared_ptr<ARDOUR::Playlist> target_playlist = source_playlist;
 	if (!target_track_id.empty ()) {
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, target_track_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, target_track_id);
 		target_track                               = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 		if (!target_track) {
 			return jsonrpc_error (id, -32602, "trackId is not a track");
@@ -2688,7 +2688,7 @@ handle_region_move_tool (ARDOUR::Session& session, pt::ptree& root, const std::s
 	std::shared_ptr<ARDOUR::Track>    target_track;
 	std::shared_ptr<ARDOUR::Playlist> target_playlist = source_playlist;
 	if (!target_track_id.empty ()) {
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, target_track_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, target_track_id);
 		target_track                               = std::dynamic_pointer_cast<ARDOUR::Track> (route);
 		if (!target_track) {
 			return jsonrpc_error (id, -32602, "trackId is not a track");

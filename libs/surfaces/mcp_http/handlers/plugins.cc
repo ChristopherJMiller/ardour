@@ -714,7 +714,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Invalid position (expected >= 0)");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -843,7 +843,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Invalid pluginIndex (expected >= 0)");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -892,7 +892,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Invalid controlId (expected >= 0)");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -1009,7 +1009,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Missing enabled boolean");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -1057,7 +1057,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Invalid pluginIndex (expected >= 0)");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -1103,7 +1103,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Invalid fromIndex/toIndex (expected >= 0)");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
@@ -1197,7 +1197,7 @@ handle_plugin_tool_call (ARDOUR::Session& session, PBD::EventLoop* event_loop, c
 			return jsonrpc_error (id, -32602, "Missing postFader boolean");
 		}
 
-		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id (_session, route_id);
+		const std::shared_ptr<ARDOUR::Route> route = route_by_mcp_id_or_selection (_session, route_id);
 		if (!route) {
 			return jsonrpc_error (id, -32602, "Route not found");
 		}
