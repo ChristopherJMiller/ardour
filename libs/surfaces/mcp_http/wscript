@@ -16,6 +16,7 @@ def build(bld):
             mcp_http_server.cc
             handlers/automation.cc
             handlers/common.cc
+            handlers/lua.cc
             handlers/markers.cc
             handlers/plugins.cc
             handlers/prompts.cc

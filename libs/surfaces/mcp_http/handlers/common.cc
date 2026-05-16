@@ -88,7 +88,8 @@ canonical_tool_name (std::string tool_name)
 		"midi_region",
 		"midi_note",
 		"tempo",
-		"automation"
+		"automation",
+		"lua"
 	};
 
 	for (size_t i = 0; i < (sizeof (known_groups) / sizeof (known_groups[0])); ++i) {

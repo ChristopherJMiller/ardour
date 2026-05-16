@@ -78,6 +78,7 @@
 
 #include "handlers/automation.h"
 #include "handlers/common.h"
+#include "handlers/lua.h"
 #include "handlers/markers.h"
 #include "handlers/plugins.h"
 #include "handlers/prompts.h"
@@ -495,6 +496,11 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		std::string automation_tool_response;
 		if (mcp::dispatch_automation_tool_call (_session, tool_name, root, id, automation_tool_response)) {
 			return automation_tool_response;
+		}
+
+		std::string lua_tool_response;
+		if (mcp::dispatch_lua_tool_call (_session, tool_name, root, id, lua_tool_response)) {
+			return lua_tool_response;
 		}
 
 		return mcp::jsonrpc_error (id, -32602, "Unknown tool name");
