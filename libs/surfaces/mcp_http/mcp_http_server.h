@@ -20,12 +20,19 @@
 #define _ardour_surface_mcp_http_server_h_
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <stdint.h>
 #include <string>
 #include <thread>
 #include <unordered_map>
 
 #include <libwebsockets.h>
+
+#include "pbd/signals.h"
 
 namespace PBD
 {
@@ -51,12 +58,27 @@ public:
 	void set_debug_level (int);
 	int  debug_level () const;
 
+public:
+	enum SubscriptionBit {
+		SubTransport = 1 << 0,
+		SubSelection = 1 << 1,
+		SubRoutes    = 1 << 2,
+		SubMarkers   = 1 << 3,
+		SubRecord    = 1 << 4,
+	};
+
 private:
 	struct ClientContext {
 		bool        mcp_post;
+		bool        sse;
+		bool        sse_headers_sent;
 		bool        have_response;
+		uint32_t    subscriptions;
 		std::string request_body;
 		std::string response_body;
+		std::deque<std::string> sse_queue;
+		/* per-client mutex for sse_queue */
+		std::shared_ptr<std::mutex> sse_mutex;
 	};
 
 	typedef std::unordered_map<struct lws*, ClientContext> ClientMap;
@@ -69,8 +91,15 @@ private:
 	struct lws_protocols             _protocols[2];
 	struct lws_context_creation_info _info;
 	ClientMap                        _clients;
+	std::mutex                       _clients_mutex;
 	std::thread                      _service_thread;
 	bool                             _running;
+
+	/* SSE plumbing */
+	PBD::ScopedConnectionList _sse_signal_connections;
+	std::atomic<int>          _sse_client_count;
+	std::mutex                _position_coalesce_mutex;
+	std::chrono::steady_clock::time_point _last_position_emit;
 
 	void run ();
 
@@ -86,6 +115,15 @@ private:
 	int send_json_headers (struct lws*);
 	int send_http_status (struct lws*, unsigned int);
 	int write_json_response (struct lws*, ClientContext&);
+
+	int begin_sse (struct lws*, ClientContext&, uint32_t subscriptions);
+	int write_sse_headers (struct lws*);
+	int write_sse_frames (struct lws*, ClientContext&);
+	uint32_t parse_subscriptions (const std::string& query);
+
+	void setup_session_signals ();
+	void teardown_session_signals ();
+	void emit_sse_event (uint32_t needed_subscription, const std::string& event_name, const std::string& json_payload);
 
 	std::string dispatch_jsonrpc (const std::string&) const;
 

@@ -103,6 +103,8 @@ MCPHttpServer::MCPHttpServer (ARDOUR::Session& session, uint16_t port, int debug
 	, _event_loop (event_loop)
 	, _context (0)
 	, _running (false)
+	, _sse_client_count (0)
+	, _last_position_emit (std::chrono::steady_clock::now ())
 {
 	memset (_protocols, 0, sizeof (_protocols));
 	memset (&_info, 0, sizeof (_info));
@@ -202,12 +204,17 @@ MCPHttpServer::run ()
 MCPHttpServer::ClientContext&
 MCPHttpServer::client (struct lws* wsi)
 {
-	ClientMap::iterator it = _clients.find (wsi);
+	std::lock_guard<std::mutex> lock (_clients_mutex);
+	ClientMap::iterator         it = _clients.find (wsi);
 	if (it == _clients.end ()) {
 		ClientContext ctx;
-		ctx.mcp_post      = false;
-		ctx.have_response = false;
-		it                = _clients.emplace (wsi, ctx).first;
+		ctx.mcp_post         = false;
+		ctx.sse              = false;
+		ctx.sse_headers_sent = false;
+		ctx.have_response    = false;
+		ctx.subscriptions    = 0;
+		ctx.sse_mutex        = std::make_shared<std::mutex> ();
+		it                   = _clients.emplace (wsi, std::move (ctx)).first;
 	}
 
 	return it->second;
@@ -216,9 +223,18 @@ MCPHttpServer::client (struct lws* wsi)
 void
 MCPHttpServer::erase_client (struct lws* wsi)
 {
-	ClientMap::iterator it = _clients.find (wsi);
-	if (it != _clients.end ()) {
-		_clients.erase (it);
+	bool was_sse = false;
+	{
+		std::lock_guard<std::mutex> lock (_clients_mutex);
+		ClientMap::iterator         it = _clients.find (wsi);
+		if (it != _clients.end ()) {
+			was_sse = it->second.sse;
+			_clients.erase (it);
+		}
+	}
+
+	if (was_sse && _sse_client_count.fetch_sub (1) == 1) {
+		teardown_session_signals ();
 	}
 }
 
@@ -235,6 +251,17 @@ MCPHttpServer::handle_http (struct lws* wsi, ClientContext& ctx)
 
 	if (lws_hdr_copy (wsi, uri, sizeof (uri), WSI_TOKEN_GET_URI) > 0) {
 		path = uri;
+
+		/* GET /events — Server-Sent Events stream. */
+		if (path == "/events") {
+			char query[1024];
+			std::string q;
+			if (lws_hdr_copy (wsi, query, sizeof (query), WSI_TOKEN_HTTP_URI_ARGS) > 0) {
+				q = query;
+			}
+			const uint32_t subs = parse_subscriptions (q);
+			return begin_sse (wsi, ctx, subs);
+		}
 
 		/* HTTP-only MCP endpoint: POST /mcp */
 		if (path == "/mcp") {
@@ -295,6 +322,18 @@ MCPHttpServer::handle_http_body_completion (struct lws* wsi, ClientContext& ctx)
 int
 MCPHttpServer::handle_http_writeable (struct lws* wsi, ClientContext& ctx)
 {
+	if (ctx.sse) {
+		if (!ctx.sse_headers_sent) {
+			if (write_sse_headers (wsi)) {
+				return 1;
+			}
+			ctx.sse_headers_sent = true;
+			lws_callback_on_writable (wsi);
+			return 0;
+		}
+		return write_sse_frames (wsi, ctx);
+	}
+
 	if (ctx.have_response) {
 		return write_json_response (wsi, ctx);
 	}
@@ -355,7 +394,252 @@ MCPHttpServer::write_json_response (struct lws* wsi, ClientContext& ctx)
 	return -1;
 }
 
+uint32_t
+MCPHttpServer::parse_subscriptions (const std::string& query)
+{
+	/* Find subscribe=... in the query string. Default: all categories. */
+	const std::string key = "subscribe=";
+	const auto        pos = query.find (key);
+	if (pos == std::string::npos) {
+		return SubTransport | SubSelection | SubRoutes | SubMarkers | SubRecord;
+	}
 
+	uint32_t          mask  = 0;
+	std::string       value = query.substr (pos + key.size ());
+	const auto        amp   = value.find ('&');
+	if (amp != std::string::npos) {
+		value = value.substr (0, amp);
+	}
+
+	size_t start = 0;
+	while (start <= value.size ()) {
+		size_t end = value.find (',', start);
+		if (end == std::string::npos) {
+			end = value.size ();
+		}
+		std::string tok = value.substr (start, end - start);
+		if      (tok == "transport") mask |= SubTransport;
+		else if (tok == "selection") mask |= SubSelection;
+		else if (tok == "routes")    mask |= SubRoutes;
+		else if (tok == "markers")   mask |= SubMarkers;
+		else if (tok == "record")    mask |= SubRecord;
+		else if (tok == "all")       mask |= SubTransport | SubSelection | SubRoutes | SubMarkers | SubRecord;
+		start = end + 1;
+	}
+
+	return mask ? mask : (SubTransport | SubSelection | SubRoutes | SubMarkers | SubRecord);
+}
+
+int
+MCPHttpServer::begin_sse (struct lws* wsi, ClientContext& ctx, uint32_t subscriptions)
+{
+	ctx.sse              = true;
+	ctx.sse_headers_sent = false;
+	ctx.subscriptions    = subscriptions;
+
+	const int was_zero = (_sse_client_count.fetch_add (1) == 0);
+	if (was_zero) {
+		setup_session_signals ();
+	}
+
+	lws_callback_on_writable (wsi);
+	return 0;
+}
+
+int
+MCPHttpServer::write_sse_headers (struct lws* wsi)
+{
+	unsigned char  out_buf[1024];
+	unsigned char* start = out_buf;
+	unsigned char* p     = start;
+	unsigned char* end   = &out_buf[sizeof (out_buf) - 1];
+
+#if LWS_LIBRARY_VERSION_MAJOR >= 3
+	if (lws_add_http_common_headers (wsi, 200, "text/event-stream", LWS_ILLEGAL_HTTP_CONTENT_LEN, &p, end)
+	    || lws_add_http_header_by_token (wsi, WSI_TOKEN_HTTP_CACHE_CONTROL, reinterpret_cast<const unsigned char*> ("no-store"), 8, &p, end)
+	    || lws_add_http_header_by_name (wsi, reinterpret_cast<const unsigned char*> ("X-Accel-Buffering:"), reinterpret_cast<const unsigned char*> ("no"), 2, &p, end)
+	    || lws_finalize_write_http_header (wsi, start, &p, end)) {
+		return 1;
+	}
+#else
+	if (lws_add_http_header_status (wsi, 200, &p, end)
+	    || lws_add_http_header_by_token (wsi, WSI_TOKEN_HTTP_CONTENT_TYPE, reinterpret_cast<const unsigned char*> ("text/event-stream"), 17, &p, end)
+	    || lws_add_http_header_by_token (wsi, WSI_TOKEN_HTTP_CACHE_CONTROL, reinterpret_cast<const unsigned char*> ("no-store"), 8, &p, end)
+	    || lws_finalize_http_header (wsi, &p, end)) {
+		return 1;
+	}
+
+	int hlen = p - start;
+	if (lws_write (wsi, start, hlen, LWS_WRITE_HTTP_HEADERS) != hlen) {
+		return 1;
+	}
+#endif
+
+	/* Initial comment to flush the headers through any intermediary. */
+	const char* hello = ": ardour-mcp sse open\n\n";
+	const size_t hello_len = std::strlen (hello);
+	std::vector<unsigned char> buf (LWS_PRE + hello_len);
+	std::memcpy (buf.data () + LWS_PRE, hello, hello_len);
+	if (lws_write (wsi, buf.data () + LWS_PRE, hello_len, LWS_WRITE_HTTP) != (int)hello_len) {
+		return 1;
+	}
+	return 0;
+}
+
+int
+MCPHttpServer::write_sse_frames (struct lws* wsi, ClientContext& ctx)
+{
+	std::deque<std::string> drained;
+	{
+		std::lock_guard<std::mutex> lock (*ctx.sse_mutex);
+		drained.swap (ctx.sse_queue);
+	}
+
+	if (drained.empty ()) {
+		return 0;
+	}
+
+	std::string out;
+	for (const std::string& frame : drained) {
+		out += frame;
+	}
+
+	std::vector<unsigned char> buf (LWS_PRE + out.size ());
+	std::memcpy (buf.data () + LWS_PRE, out.data (), out.size ());
+	if (lws_write (wsi, buf.data () + LWS_PRE, out.size (), LWS_WRITE_HTTP) != (int)out.size ()) {
+		return 1;
+	}
+
+	/* If more events queued after we drained, re-arm. */
+	{
+		std::lock_guard<std::mutex> lock (*ctx.sse_mutex);
+		if (!ctx.sse_queue.empty ()) {
+			lws_callback_on_writable (wsi);
+		}
+	}
+
+	return 0;
+}
+
+void
+MCPHttpServer::emit_sse_event (uint32_t needed_subscription, const std::string& event_name, const std::string& json_payload)
+{
+	/* Build the SSE frame once; copy into matching clients. */
+	std::ostringstream frame;
+	frame << "event: " << event_name << "\n"
+	      << "data: " << json_payload << "\n\n";
+	const std::string s = frame.str ();
+
+	bool any_queued = false;
+	{
+		std::lock_guard<std::mutex> lock (_clients_mutex);
+		for (auto& kv : _clients) {
+			ClientContext& cc = kv.second;
+			if (!cc.sse) {
+				continue;
+			}
+			if (!(cc.subscriptions & needed_subscription)) {
+				continue;
+			}
+			std::lock_guard<std::mutex> qlock (*cc.sse_mutex);
+			cc.sse_queue.push_back (s);
+			any_queued = true;
+		}
+	}
+
+	if (any_queued && _context) {
+		lws_cancel_service (_context);
+	}
+}
+
+void
+MCPHttpServer::setup_session_signals ()
+{
+	if (debug_level () >= 1) {
+		PBD::info << "MCPHttp: starting SSE signal observers" << endmsg;
+	}
+
+	/* Capture this by pointer; ScopedConnectionList disconnects on destruction. */
+	MCPHttpServer* self = this;
+
+	_session.TransportStateChange.connect_same_thread (_sse_signal_connections, [self] () {
+		std::ostringstream ss;
+		ss << mcp::transport_state_json (self->_session);
+		self->emit_sse_event (SubTransport, "transport", ss.str ());
+	});
+
+	_session.RecordStateChanged.connect_same_thread (_sse_signal_connections, [self] () {
+		std::ostringstream ss;
+		ss << "{\"recordState\":\"" << mcp::record_state_string (self->_session.record_status ()) << "\"}";
+		self->emit_sse_event (SubRecord, "record", ss.str ());
+	});
+
+	_session.PositionChanged.connect_same_thread (_sse_signal_connections, [self] (samplepos_t pos) {
+		/* Coalesce to ~10 Hz to avoid event flood. */
+		using namespace std::chrono;
+		const auto now = steady_clock::now ();
+		{
+			std::lock_guard<std::mutex> lock (self->_position_coalesce_mutex);
+			if (duration_cast<milliseconds> (now - self->_last_position_emit).count () < 100) {
+				return;
+			}
+			self->_last_position_emit = now;
+		}
+		std::ostringstream ss;
+		ss << "{\"sample\":" << pos
+		   << ",\"bbt\":" << mcp::bbt_json_at_sample (pos)
+		   << "}";
+		self->emit_sse_event (SubTransport, "position", ss.str ());
+	});
+
+	_session.RouteAdded.connect_same_thread (_sse_signal_connections, [self] (ARDOUR::RouteList const& routes) {
+		std::ostringstream ss;
+		ss << "{\"added\":[";
+		bool first = true;
+		for (const std::shared_ptr<ARDOUR::Route>& r : routes) {
+			if (!r) continue;
+			if (!first) ss << ",";
+			first = false;
+			ss << "{\"id\":\"" << mcp::json_escape (r->id ().to_s ()) << "\""
+			   << ",\"name\":\"" << mcp::json_escape (r->name ()) << "\""
+			   << ",\"type\":\"" << mcp::route_type_string (r) << "\"}";
+		}
+		ss << "]}";
+		self->emit_sse_event (SubRoutes, "routes_added", ss.str ());
+	});
+
+	/* CoreSelection::PropertyChanged fires when selection content changes. */
+	_session.selection ().PropertyChanged.connect_same_thread (_sse_signal_connections, [self] (const PBD::PropertyChange&) {
+		std::shared_ptr<ARDOUR::Route> sel = std::dynamic_pointer_cast<ARDOUR::Route> (
+		    self->_session.selection ().first_selected_stripable ());
+		std::ostringstream ss;
+		ss << "{\"selectedRoute\":";
+		if (sel) {
+			ss << "{\"id\":\"" << mcp::json_escape (sel->id ().to_s ()) << "\""
+			   << ",\"name\":\"" << mcp::json_escape (sel->name ()) << "\"}";
+		} else {
+			ss << "null";
+		}
+		ss << "}";
+		self->emit_sse_event (SubSelection, "selection", ss.str ());
+	});
+
+	/* Marker / location changes — Locations broadcasts a "changed" signal. */
+	if (ARDOUR::Locations* locs = _session.locations ()) {
+		locs->changed.connect_same_thread (_sse_signal_connections, [self] () {
+			self->emit_sse_event (SubMarkers, "markers", "{\"changed\":true}");
+		});
+	}
+}
+
+void
+MCPHttpServer::teardown_session_signals ()
+{
+	if (debug_level () >= 1) {
+		PBD::info << "MCPHttp: stopping SSE signal observers (last client disconnected)" << endmsg;
+	}
+	_sse_signal_connections.drop_connections ();
+}
 
 
 
@@ -512,6 +796,31 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 int
 MCPHttpServer::callback (struct lws* wsi, enum lws_callback_reasons reason, void* user, void* in, size_t len)
 {
+#ifdef LWS_CALLBACK_EVENT_WAIT_CANCELLED
+	if (reason == LWS_CALLBACK_EVENT_WAIT_CANCELLED) {
+		/* lws_cancel_service() was called from another thread — usually because
+		 * a signal observer queued an SSE event. Wake every SSE client that has
+		 * pending frames.
+		 */
+		std::lock_guard<std::mutex> lock (_clients_mutex);
+		for (auto& kv : _clients) {
+			ClientContext& cc = kv.second;
+			if (!cc.sse) {
+				continue;
+			}
+			bool has_pending;
+			{
+				std::lock_guard<std::mutex> qlock (*cc.sse_mutex);
+				has_pending = !cc.sse_queue.empty ();
+			}
+			if (has_pending) {
+				lws_callback_on_writable (kv.first);
+			}
+		}
+		return 0;
+	}
+#endif
+
 	ClientContext& ctx = client (wsi);
 	int            rc  = 0;
 
