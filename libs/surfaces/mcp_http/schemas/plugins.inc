@@ -53,36 +53,6 @@ R"mcp(
       "id",
       "pluginIndex"
     ],
-    "allOf": [
-      {
-        "oneOf": [
-          {
-            "required": [
-              "parameterIndex"
-            ]
-          },
-          {
-            "required": [
-              "controlId"
-            ]
-          }
-        ]
-      },
-      {
-        "oneOf": [
-          {
-            "required": [
-              "value"
-            ]
-          },
-          {
-            "required": [
-              "interface"
-            ]
-          }
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -365,22 +335,6 @@ R"mcp(
     },
     "required": [
       "id"
-    ],
-    "allOf": [
-      {
-        "oneOf": [
-          {
-            "required": [
-              "pluginId"
-            ]
-          },
-          {
-            "required": [
-              "uniqueId"
-            ]
-          }
-        ]
-      }
     ],
     "additionalProperties": false
   },

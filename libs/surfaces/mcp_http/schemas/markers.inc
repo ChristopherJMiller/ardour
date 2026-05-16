@@ -73,22 +73,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   }
 },{
@@ -123,22 +107,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   }
 },{
@@ -186,22 +154,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   }
 },{
@@ -235,18 +187,6 @@ R"mcp(
         "minimum": 0
       }
     },
-    "anyOf": [
-      {
-        "required": [
-          "locationId"
-        ]
-      },
-      {
-        "required": [
-          "name"
-        ]
-      }
-    ],
     "additionalProperties": false
   }
 },{
@@ -272,18 +212,6 @@ R"mcp(
     },
     "required": [
       "newName"
-    ],
-    "anyOf": [
-      {
-        "required": [
-          "locationId"
-        ]
-      },
-      {
-        "required": [
-          "name"
-        ]
-      }
     ],
     "additionalProperties": false
   }

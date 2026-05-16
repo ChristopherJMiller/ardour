@@ -40,22 +40,6 @@ R"mcp(
     "required": [
       "trackId"
     ],
-    "oneOf": [
-      {
-        "required": [
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -123,24 +107,6 @@ R"mcp(
       "regionId",
       "note",
       "lengthBeats"
-    ],
-    "oneOf": [
-      {
-        "required": [
-          "regionBeat"
-        ]
-      },
-      {
-        "required": [
-          "sample"
-        ]
-      },
-      {
-        "required": [
-          "bar",
-          "beat"
-        ]
-      }
     ],
     "additionalProperties": false
   }
@@ -374,29 +340,6 @@ R"mcp(
     },
     "required": [
       "midi"
-    ],
-    "oneOf": [
-      {
-        "required": [
-          "regionId"
-        ]
-      },
-      {
-        "required": [
-          "trackId",
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "trackId",
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
     ],
     "additionalProperties": false
   },

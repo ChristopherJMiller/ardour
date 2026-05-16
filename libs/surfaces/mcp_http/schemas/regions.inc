@@ -67,18 +67,6 @@ R"mcp(
         "type": "boolean"
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "linear"
-        ]
-      },
-      {
-        "required": [
-          "db"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -229,30 +217,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "anyOf": [
-      {
-        "required": [
-          "startSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat"
-        ]
-      },
-      {
-        "required": [
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -310,29 +274,6 @@ R"mcp(
         "type": "number"
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "sample"
-        ]
-      },
-      {
-        "required": [
-          "bar",
-          "beat"
-        ]
-      },
-      {
-        "required": [
-          "deltaSamples"
-        ]
-      },
-      {
-        "required": [
-          "deltaBeats"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -397,29 +338,6 @@ R"mcp(
         "type": "number"
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "sample"
-        ]
-      },
-      {
-        "required": [
-          "bar",
-          "beat"
-        ]
-      },
-      {
-        "required": [
-          "deltaSamples"
-        ]
-      },
-      {
-        "required": [
-          "deltaBeats"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {

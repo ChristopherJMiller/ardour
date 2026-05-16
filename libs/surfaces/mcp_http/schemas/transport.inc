@@ -52,19 +52,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "sample"
-        ]
-      },
-      {
-        "required": [
-          "bar",
-          "beat"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -172,22 +159,6 @@ R"mcp(
         "minimum": 1
       }
     },
-    "oneOf": [
-      {
-        "required": [
-          "startSample",
-          "endSample"
-        ]
-      },
-      {
-        "required": [
-          "startBar",
-          "startBeat",
-          "endBar",
-          "endBeat"
-        ]
-      }
-    ],
     "additionalProperties": false
   },
   "outputSchema": {

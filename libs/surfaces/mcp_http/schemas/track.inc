@@ -259,18 +259,6 @@ R"mcp(
       "id",
       "sendIndex"
     ],
-    "oneOf": [
-      {
-        "required": [
-          "position"
-        ]
-      },
-      {
-        "required": [
-          "db"
-        ]
-      }
-    ],
     "additionalProperties": false
   }
 },{
@@ -457,18 +445,6 @@ R"mcp(
     },
     "required": [
       "id"
-    ],
-    "oneOf": [
-      {
-        "required": [
-          "position"
-        ]
-      },
-      {
-        "required": [
-          "db"
-        ]
-      }
     ],
     "additionalProperties": false
   }
