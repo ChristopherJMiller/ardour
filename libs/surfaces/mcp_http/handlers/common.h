@@ -85,6 +85,7 @@ double      transport_tempo_bpm (ARDOUR::Session&);
 /* --- Route / marker / BBT helpers ----------------------------------------- */
 
 std::string route_type_string (const std::shared_ptr<ARDOUR::Route>&);
+std::string plugin_list_json (const std::shared_ptr<ARDOUR::Route>&);
 std::string bbt_json_at_sample (samplepos_t);
 std::string marker_type_json (ARDOUR::Location::Flags);
 std::string special_range_json (const ARDOUR::Location&, const std::string& mode);

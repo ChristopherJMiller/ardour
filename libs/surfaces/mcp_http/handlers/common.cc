@@ -32,6 +32,7 @@
 #include "ardour/region.h"
 #include "ardour/region_factory.h"
 #include "ardour/route.h"
+#include "ardour/processor.h"
 #include "ardour/session.h"
 #include "ardour/tempo.h"
 #include "ardour/audio_track.h"
@@ -292,6 +293,41 @@ transport_tempo_bpm (ARDOUR::Session& session)
 	} catch (...) {
 		return 120.0;
 	}
+}
+
+std::string
+plugin_list_json (const std::shared_ptr<ARDOUR::Route>& route)
+{
+	std::ostringstream ss;
+	ss << "[";
+
+	bool first = true;
+	for (uint32_t i = 0;; ++i) {
+		std::shared_ptr<ARDOUR::Processor> p = route->nth_plugin (i);
+		if (!p) {
+			break;
+		}
+		if (!p->display_to_user ()) {
+			continue;
+		}
+
+		if (!first) {
+			ss << ",";
+		}
+		first = false;
+
+		ss << "{\"index\":" << i
+		   << ",\"name\":\"" << json_escape (p->name ()) << "\""
+		   << ",\"displayName\":\"" << json_escape (p->display_name ()) << "\""
+		   << ",\"preFader\":" << (p->get_pre_fader () ? "true" : "false")
+		   << ",\"postFader\":" << (p->get_pre_fader () ? "false" : "true")
+		   << ",\"active\":" << (p->active () ? "true" : "false")
+		   << ",\"enabled\":" << (p->enabled () ? "true" : "false")
+		   << "}";
+	}
+
+	ss << "]";
+	return ss.str ();
 }
 
 std::string
