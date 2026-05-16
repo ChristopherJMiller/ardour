@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+
+import os
+
+def configure(conf):
+    pass
+
+def build(bld):
+    prompts = bld.path.ant_glob ('prompts/*.md')
+    bld.install_files (os.path.join(bld.env['DATADIR'], 'mcp_http', 'prompts'), prompts)
+
+def options(opt):
+    pass

@@ -393,6 +393,7 @@ children = [
         'share/media',
         'share/midi_maps',
         'share/mcp',
+        'share/mcp_http',
         'share/osc',
         'share/patchfiles',
         'share/plugin_metadata',

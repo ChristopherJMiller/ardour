@@ -79,6 +79,7 @@
 #include "handlers/common.h"
 #include "handlers/markers.h"
 #include "handlers/plugins.h"
+#include "handlers/prompts.h"
 #include "handlers/regions_midi.h"
 #include "handlers/session.h"
 #include "handlers/tempo.h"
@@ -395,8 +396,16 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		return mcp::jsonrpc_result (
 		    id,
 		    "{\"protocolVersion\":\"2025-03-26\","
-		    "\"capabilities\":{\"tools\":{\"listChanged\":false}},"
+		    "\"capabilities\":{\"tools\":{\"listChanged\":false},\"prompts\":{\"listChanged\":false}},"
 		    "\"serverInfo\":{\"name\":\"ardour-mcp-http\",\"version\":\"0.1.0\"}}");
+	}
+
+	if (method == "prompts/list") {
+		return mcp::handle_prompts_list (id);
+	}
+
+	if (method == "prompts/get") {
+		return mcp::handle_prompts_get (root, id);
 	}
 
 	if (method == "notifications/initialized" && !has_id) {
