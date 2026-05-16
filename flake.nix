@@ -107,7 +107,37 @@
           '';
         };
 
-        # `nix build` produces the upstream nixpkgs ardour, handy as a smoke test.
-        packages.default = pkgs.ardour;
+        # Builds ardour from this fork (this flake's `self`) by overriding the
+        # nixpkgs ardour derivation. Inherits all the upstream packaging — patches,
+        # bundled content, wafConfigureFlags, postInstall icon/desktop install,
+        # video-tool wrapping — and only swaps the source and version.
+        #
+        # The version string is the major version of our synthetic git tag; the
+        # wscript reads MAJOR from `git describe` to name the installed binary,
+        # so this produces `bin/ardour9`. mainProgram is updated to match.
+        packages.default = pkgs.ardour.overrideAttrs (finalAttrs: old: {
+          pname   = "ardour-mcp";
+          version = "9.0-pre0";
+
+          src = self;
+
+          # Rewrite postPatch so the revision.cc stamp uses our version string
+          # and we skip the upstream fetchgit-related steps that no longer apply.
+          postPatch = ''
+            printf '#include "libs/ardour/ardour/revision.h"\nnamespace ARDOUR { const char* revision = "${finalAttrs.version}"; const char* date = ""; }\n' > libs/ardour/revision.cc
+            sed 's|/usr/include/libintl.h|${pkgs.glibc.dev}/include/libintl.h|' -i wscript
+            patchShebangs ./tools/
+            substituteInPlace libs/ardour/video_tools_paths.cc \
+              --replace-fail 'ffmpeg_exe = X_("");' 'ffmpeg_exe = X_("${pkgs.ffmpeg}/bin/ffmpeg");' \
+              --replace-fail 'ffprobe_exe = X_("");' 'ffprobe_exe = X_("${pkgs.ffmpeg}/bin/ffprobe");'
+          '';
+
+          # Master added an #include <jpeglib.h> after 8.12 (see commit
+          # e974a861ead). Upstream nixpkgs 8.12 didn't need libjpeg, so we add
+          # it here.
+          buildInputs = old.buildInputs ++ [ pkgs.libjpeg ];
+
+          meta = old.meta // { mainProgram = "ardour9"; };
+        });
       });
 }
