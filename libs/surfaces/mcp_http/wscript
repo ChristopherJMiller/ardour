@@ -15,7 +15,9 @@ def build(bld):
             mcp_http_gui.cc
             mcp_http_server.cc
             handlers/common.cc
+            handlers/markers.cc
             handlers/session.cc
+            handlers/tracks.cc
             handlers/transport.cc
     '''
     obj.defines      = [ 'PACKAGE="ardour_mcp_http"' ]
