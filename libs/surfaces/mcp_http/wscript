@@ -17,6 +17,7 @@ def build(bld):
             handlers/common.cc
             handlers/markers.cc
             handlers/plugins.cc
+            handlers/regions_midi.cc
             handlers/session.cc
             handlers/track.cc
             handlers/tracks.cc

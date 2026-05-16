@@ -29,7 +29,10 @@
 #include "ardour/amp.h"
 #include "ardour/dB.h"
 #include "ardour/location.h"
+#include "ardour/playlist.h"
 #include "ardour/region.h"
+#include "ardour/selection.h"
+#include "ardour/track.h"
 #include "ardour/region_factory.h"
 #include "ardour/route.h"
 #include "ardour/processor.h"
@@ -293,6 +296,63 @@ transport_tempo_bpm (ARDOUR::Session& session)
 	} catch (...) {
 		return 120.0;
 	}
+}
+
+bool
+resolve_region_argument_or_selected_at_playhead (
+    ARDOUR::Session&                 session,
+    const pt::ptree&                 root,
+    const std::string&               args_path,
+    std::shared_ptr<ARDOUR::Region>& region,
+    std::string&                     resolved_via,
+    std::string&                     error)
+{
+	error.clear ();
+	resolved_via.clear ();
+	region.reset ();
+
+	const std::string region_id = root.get<std::string> (args_path + ".regionId", "");
+	if (!region_id.empty ()) {
+		region = region_by_mcp_id (region_id);
+		if (!region) {
+			error = "regionId not found";
+			return false;
+		}
+		resolved_via = "regionId";
+		return true;
+	}
+
+	const std::shared_ptr<ARDOUR::Stripable> selected_stripable = session.selection ().first_selected_stripable ();
+	if (!selected_stripable) {
+		error = "Missing regionId and no selected track";
+		return false;
+	}
+
+	const std::shared_ptr<ARDOUR::Route> selected_route = std::dynamic_pointer_cast<ARDOUR::Route> (selected_stripable);
+	const std::shared_ptr<ARDOUR::Track> selected_track = std::dynamic_pointer_cast<ARDOUR::Track> (selected_route);
+	if (!selected_track) {
+		error = "Missing regionId and selected stripable is not a track";
+		return false;
+	}
+
+	const std::shared_ptr<ARDOUR::Playlist> selected_playlist = selected_track->playlist ();
+	if (!selected_playlist) {
+		error = "Missing regionId and selected track has no playlist";
+		return false;
+	}
+
+	const samplepos_t playhead_sample = session.transport_sample ();
+	region                            = selected_playlist->top_unmuted_region_at (Temporal::timepos_t (playhead_sample));
+	if (!region) {
+		region = selected_playlist->top_region_at (Temporal::timepos_t (playhead_sample));
+	}
+	if (!region) {
+		error = "Missing regionId and no region at playhead on selected track";
+		return false;
+	}
+
+	resolved_via = "selectedTrackAtPlayhead";
+	return true;
 }
 
 std::string

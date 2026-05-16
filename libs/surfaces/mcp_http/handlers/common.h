@@ -121,6 +121,14 @@ bool parse_range_endpoints (
     samplepos_t&       end_sample,
     std::string&       error);
 
+bool resolve_region_argument_or_selected_at_playhead (
+    ARDOUR::Session&                 session,
+    const pt::ptree&                 root,
+    const std::string&               args_path,
+    std::shared_ptr<ARDOUR::Region>& region,
+    std::string&                     resolved_via,
+    std::string&                     error);
+
 /* --- Fader / dB helpers (shared by tracks + sends) ------------------------ */
 
 bool   valid_fader_position (double);
