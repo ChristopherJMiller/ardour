@@ -76,6 +76,7 @@
 #include "ardour/tempo.h"
 #include "ardour/track.h"
 
+#include "handlers/analysis.h"
 #include "handlers/automation.h"
 #include "handlers/common.h"
 #include "handlers/lua.h"
@@ -785,6 +786,11 @@ MCPHttpServer::dispatch_jsonrpc (const std::string& payload) const
 		std::string lua_tool_response;
 		if (mcp::dispatch_lua_tool_call (_session, tool_name, root, id, lua_tool_response)) {
 			return lua_tool_response;
+		}
+
+		std::string analysis_tool_response;
+		if (mcp::dispatch_analysis_tool_call (_session, tool_name, root, id, analysis_tool_response)) {
+			return analysis_tool_response;
 		}
 
 		return mcp::jsonrpc_error (id, -32602, "Unknown tool name");

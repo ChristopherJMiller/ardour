@@ -14,6 +14,7 @@ def build(bld):
             mcp_http.cc
             mcp_http_gui.cc
             mcp_http_server.cc
+            handlers/analysis.cc
             handlers/automation.cc
             handlers/common.cc
             handlers/lua.cc
