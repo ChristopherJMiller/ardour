@@ -1,0 +1,85 @@
+name: Publish Nix Binary Cache
+
+# Build packages.default and devShells.default from the flake at the repo
+# root, then push the resulting NARs to ghcr.io/<owner>/<repo>/nix-cache as
+# OCI blobs. Consumers add an `services.nixcache-proxy` instance (from
+# upstream cmspam/nixcache-oci) pointing at this repo so `nixos-rebuild`
+# fetches a prebuilt ardour instead of compiling from source.
+#
+# Trigger:
+#   - push to master (whenever the fork advances)
+#   - manual dispatch (re-run if a publish failed)
+#
+# The pipeline filters out anything cache.nixos.org already serves, so the
+# only NARs pushed are the ardour-mcp output + any patched deps the override
+# pulls in (typically just our build).
+#
+# Signing:
+#   Set the repo secret `NIX_SIGNING_KEY` to a base64'd nix signing key
+#   produced by `nix-store --generate-binary-cache-key`. The matching
+#   public key is auto-committed to `public-key.txt` on the first run.
+#   Without the secret, NARs are pushed unsigned and consumers must set
+#   `services.nixcache-proxy.requireSignatures = false`.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Setup signing key
+        run: |
+          if [[ -n "${{ secrets.NIX_SIGNING_KEY }}" ]]; then
+            echo "${{ secrets.NIX_SIGNING_KEY }}" > "$RUNNER_TEMP/signing-key"
+            echo "NIXCACHE_SIGNING_KEY_FILE=$RUNNER_TEMP/signing-key" >> "$GITHUB_ENV"
+            echo ">>> Signing key configured"
+
+            nix key convert-secret-to-public < "$RUNNER_TEMP/signing-key" > public-key.txt 2>/dev/null || true
+            if [[ -s public-key.txt ]]; then
+              echo ">>> Public key: $(cat public-key.txt)"
+            fi
+          else
+            echo ">>> No signing key configured — cache will be unsigned"
+            echo "::notice::Cache packages will not be signed. Set NIX_SIGNING_KEY secret to enable signing. Clients will need requireSignatures = false."
+          fi
+
+      - name: Commit public key if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [[ -f public-key.txt ]]; then
+            git add public-key.txt
+            if ! git diff --cached --quiet; then
+              git commit -m "ci: refresh public-key.txt"
+              git push
+            fi
+          fi
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and publish cache
+        env:
+          # `${{ github.repository }}` is ChristopherJMiller/ardour; GHCR
+          # normalises to lowercase. NIXCACHE_IMAGE will be
+          # ghcr.io/christopherjmiller/ardour/nix-cache.
+          NIXCACHE_REPO: ${{ github.repository }}
+          # Our flake lives at the repo root, not in a `config/` sub-flake.
+          NIXCACHE_CONFIG_DIR: .
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source .github/nixcache-oci/lib/cache-builder.sh
+          full_pipeline
