@@ -123,7 +123,11 @@
 
           # Rewrite postPatch so the revision.cc stamp uses our version string
           # and we skip the upstream fetchgit-related steps that no longer apply.
+          # Also strip any .git directory that might have ridden along in the
+          # source — Ardour's wscript prefers `git describe` over the canned
+          # revision.cc when it sees one, and we don't ship git in the sandbox.
           postPatch = ''
+            rm -rf .git .gitattributes
             printf '#include "libs/ardour/ardour/revision.h"\nnamespace ARDOUR { const char* revision = "${finalAttrs.version}"; const char* date = ""; }\n' > libs/ardour/revision.cc
             sed 's|/usr/include/libintl.h|${pkgs.glibc.dev}/include/libintl.h|' -i wscript
             patchShebangs ./tools/
