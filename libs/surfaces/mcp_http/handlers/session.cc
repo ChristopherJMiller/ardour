@@ -262,6 +262,49 @@ handle_session_recall_mixer_scene_tool (ARDOUR::Session& session, const pt::ptre
 	    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"Mixer scene recalled\"}],\"structuredContent\":") + structured.str () + "}");
 }
 
+std::string
+handle_session_begin_compound_tool (ARDOUR::Session& session, const pt::ptree& root, const std::string& id)
+{
+	std::string name = root.get<std::string> ("params.arguments.name", "");
+	if (name.empty ()) {
+		name = "MCP compound edit";
+	}
+
+	session.begin_reversible_command (name);
+
+	std::ostringstream structured;
+	structured << "{\"begun\":true"
+	           << ",\"name\":\"" << json_escape (name) << "\""
+	           << "}";
+	return jsonrpc_result (
+	    id,
+	    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"Compound edit opened\"}],\"structuredContent\":") + structured.str () + "}");
+}
+
+std::string
+handle_session_commit_compound_tool (ARDOUR::Session& session, const pt::ptree& /*root*/, const std::string& id)
+{
+	session.commit_reversible_command ();
+
+	std::ostringstream structured;
+	structured << "{\"committed\":true}";
+	return jsonrpc_result (
+	    id,
+	    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"Compound edit committed\"}],\"structuredContent\":") + structured.str () + "}");
+}
+
+std::string
+handle_session_abort_compound_tool (ARDOUR::Session& session, const pt::ptree& /*root*/, const std::string& id)
+{
+	session.abort_reversible_command ();
+
+	std::ostringstream structured;
+	structured << "{\"aborted\":true}";
+	return jsonrpc_result (
+	    id,
+	    std::string ("{\"content\":[{\"type\":\"text\",\"text\":\"Compound edit aborted\"}],\"structuredContent\":") + structured.str () + "}");
+}
+
 } /* anonymous namespace */
 
 bool
@@ -269,6 +312,18 @@ dispatch_session_tool_call (ARDOUR::Session& session, const std::string& tool_na
 {
 	if (tool_name == "session/get_info") {
 		response = handle_session_get_info_tool (session, id);
+		return true;
+	}
+	if (tool_name == "session/begin_compound") {
+		response = handle_session_begin_compound_tool (session, root, id);
+		return true;
+	}
+	if (tool_name == "session/commit_compound") {
+		response = handle_session_commit_compound_tool (session, root, id);
+		return true;
+	}
+	if (tool_name == "session/abort_compound") {
+		response = handle_session_abort_compound_tool (session, root, id);
 		return true;
 	}
 	if (tool_name == "session/save") {

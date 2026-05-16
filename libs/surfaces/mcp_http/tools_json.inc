@@ -140,6 +140,41 @@ R"mcp(
       }
     },
     {
+      "name": "session_begin_compound",
+      "title": "Begin Compound Edit",
+      "description": "Open an undoable compound edit. All subsequent mutating tool calls become part of a single undo step until session_commit_compound is called. Useful when an AI assistant performs a multi-step edit and wants Ctrl+Z to reverse the whole thing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable label for the undo entry (default: \"MCP compound edit\")."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "session_commit_compound",
+      "title": "Commit Compound Edit",
+      "description": "Close the currently open compound edit. Must be paired with a prior session_begin_compound.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "session_abort_compound",
+      "title": "Abort Compound Edit",
+      "description": "Discard the currently open compound edit without committing it. Must be paired with a prior session_begin_compound.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "transport_get_state",
       "title": "Transport State",
       "description": "Return transport state (rolling, speed, sample, state).",
